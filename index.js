@@ -33,39 +33,66 @@ search.hears('🔍 Найти книгу', (ctx) => ctx.reply('Введите н
 
 search.on('text', async (ctx) => {
   ctx.session.currentIdx = ctx.session.currentIdx || 0;
-  ctx.session.currentIdx++;
 
   const message = ctx.message.text;
   const uri = encodeURI(message);
   const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${uri}`);
   ctx.session.data = await response.json();
 
-  await ctx.replyWithPhoto(ctx.session.data.items[ctx.session.currentIdx].volumeInfo.imageLinks.smallThumbnail);
-  await ctx.reply(`
-📙 Название: ${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.title}
-😺 Автор/ы: ${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.authors.join(' ')}
+  await ctx.scene.enter('display');
+});
 
-${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.publisher ? `🏬 Издатель: ${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.publisher}` : ''} 
-${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.pageCount ? `📏 Кол-во страниц: ${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.pageCount}` : ''}
-${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.averageRating ? `📝 Рейтинг: ${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.averageRating}⭐` : ''}
-${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.description ? `📌 Описание: 👉${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.description}👈` : ''}
+stage.register(search);
 
-  `);
+const display = new Scene('display');
 
-  ctx.reply('', Markup
+display.enter(async (ctx) => {
+  if (ctx.session.currentIdx === ctx.session.data.totalItems - 1) {
+    return ctx.reply('Вы посмотрели все совпадения😊', Markup
+      .keyboard([
+        ['🔍 Найти книгу', '😎 Посоветовать'],
+      ])
+      .oneTime()
+      .resize()
+      .extra());
+  }
+
+  if (ctx.session.data.items[ctx.session.currentIdx].volumeInfo.imageLinks) {
+    await ctx.replyWithPhoto(ctx.session.data.items[ctx.session.currentIdx]
+      .volumeInfo.imageLinks.smallThumbnail);
+  }
+
+  await ctx.replyWithHTML(`
+<b>📙 Название:</b> ${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.title}
+${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.authors ? `<b>😺 Автор/ы:</b> ${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.authors.join(' ')}` : ''}
+
+${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.publisher ? `<b>🏬 Издатель:</b> ${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.publisher}` : ''} 
+${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.pageCount ? `<b>📏 Кол-во страниц:</b> ${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.pageCount}` : ''}
+${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.averageRating ? `<b>📝 Рейтинг:</b> ${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.averageRating}⭐` : ''}
+${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.description ? `<b>📌 Описание:</b> 👉${ctx.session.data.items[ctx.session.currentIdx].volumeInfo.description}👈` : ''}
+
+
+Я нашёл ещё ${ctx.session.data.totalItems} совпадений😎
+  `, Markup
     .keyboard([
-      ['🔍 Найти книгу', '➡Следующие совпадение'],
+      ['🔍 Найти книгу', '➡ Следующие совпадение'],
     ])
     .oneTime()
     .resize()
     .extra());
+
+  ctx.session.currentIdx++;
 });
 
-stage.register(search);
+display.hears('➡ Следующие совпадение', (ctx) => ctx.scene.enter('display'));
+
+stage.register(display);
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 bot.use(session());
 bot.use(stage.middleware());
 bot.start((ctx) => ctx.scene.enter('start'));
+
+bot.hears('🔍 Найти книгу', (ctx) => ctx.scene.enter('search'));
 
 bot.launch();
